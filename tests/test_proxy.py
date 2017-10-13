@@ -1,4 +1,6 @@
 import os
+import re
+
 import requests_mock
 from flask_testing import TestCase
 
@@ -30,13 +32,33 @@ class AppTestCase(TestCase):
             self.assertEqual(r.data.decode('utf-8'), page_except)
 
     @staticmethod
-    def transform_request(html):
-        return filter_html(html, 'http://127.0.0.1:8232')
+    def transform_request(body):
+        result = filter_html('<html><body>%s</body></html>' % body, 'http://127.0.0.1:8232')
+        return re.match(r'.*<body>\s*(.+)\s*</body>.*', result, flags=re.DOTALL).group(1).strip()
 
     def test_parser(self):
-        before = '<html><body><div>looooong mini Yandex</div></body></html>'
-        result = self.transform_request(before)
-        assert 'Yandex&trade;' in result
+        r = self.transform_request('''Сейчас на фоне уязвимости Logjam все в индустрии в очередной раз обсуждают
+  проблемы и особенности TLS. Я хочу воспользоваться этой возможностью, чтобы
+  поговорить об одной из них, а именно — о настройке ciphersiutes.''')
+        self.assertEqual('''Сейчас™ на фоне уязвимости Logjam™ все в индустрии в очередной раз обсуждают
+  проблемы и особенности TLS. Я хочу воспользоваться этой возможностью, чтобы
+  поговорить об одной из них, а именно™ — о настройке ciphersiutes.''', r)
 
-        before = '<html><body><a href="http://habrahabr.ru/company/itinvest/blog/339548/"></a></body></html>'
+        self.assertIn('ёрзать™', self.transform_request('<p>ёрзать</p>'))
+
+        # skip replace in entities
+        self.assertNotIn('™', self.transform_request('<p>&amp;spades;</p>'))
+        self.assertNotIn('™', self.transform_request('<p>&spades;</p>'))
+        self.assertIn('♠ — &amp;#9824; или &amp;spades;',
+                      self.transform_request('<p>♠ — &amp;#9824; или &amp;spades;</p>'))
+        self.assertIn('™', self.transform_request('<p>spades;</p>'))
+
+        self.assertIn('Yandex™', self.transform_request('<div>looooong mini Yandex</div>'))
+        self.assertIn('+8', self.transform_request('<span class="post-info__meta-counter">+8</span>'))
+
+        before = '<a href="http://habrahabr.ru/company/itinvest/blog/339548/"></a>'
         '<a href="http://127.0.0.1:8232/post/338068/">' in self.transform_request(before)
+
+        self.assertEqual('<b>\n   &lt;b&gt;\n  </b>', self.transform_request('<b>&lt;b&gt;</b>'))
+
+

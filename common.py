@@ -1,14 +1,13 @@
 import re
-import html
 from bs4 import BeautifulSoup as bs
 from bs4 import Comment
 
 
 def filter_html(content, app_url):
     def filter_text(text):
-        return re.sub(r'\b([а-яa-z]{6})\b', r'\1&trade;', text, flags=re.I)
+        return re.sub(r'\b(?<!&amp;)(?<!&)([а-яёa-z-]{6})\b', r'\1™', text, flags=re.IGNORECASE)
 
-    soup = bs(content, 'lxml')
+    soup = bs(content, 'html5lib')
     exclude_tags = ['script', 'style', 'noscript', 'meta', 'link', 'code']
 
     for a in soup.findAll('a', href=True):
@@ -22,4 +21,4 @@ def filter_html(content, app_url):
         if text and False not in [element.find_parent(x) is None for x in exclude_tags] and text != 'html':
             element.replace_with(filter_text(text))
 
-    return html.unescape(soup.prettify(formatter='html'))
+    return soup.prettify()
